@@ -16,7 +16,7 @@ const (
 	port     = 5432
 	user     = "postgres"
 	password = "2997"
-	dbname   = "demo"
+	dbname   = "mentorapi"
 )
 
 // * enumerations
@@ -27,14 +27,10 @@ const (
 
 var db *sql.DB
 
-type CategoryDetail struct {
-	Category string `json:"category_name"`
-}
-
 type RegsiterDetail struct {
-	Name   string `json:"name"`
-	Choice string `json:"choice"`
-	CategoryDetail
+	Name     string `json:"name"`
+	Choice   string `json:"choice"`
+	Category string `json:"category_name"`
 }
 
 type Person struct {
@@ -59,13 +55,15 @@ func getCategoryId(cName string, canMakeNew bool) int {
 	case sql.ErrNoRows:
 		// no category_name in records
 		if canMakeNew {
+			log.Println("making new category")
 			sqlStatement := `
 			INSERT INTO category (category_name)
 			VALUES ($1) 
-			RETURNING id`
+			RETURNING category_id`
 			if err := db.QueryRow(sqlStatement, cName).Scan(&_id); err != nil {
 				return DB_ERROR
 			}
+			log.Println("Made new category")
 		} else {
 			return WRONG_DATA
 		}
@@ -74,21 +72,28 @@ func getCategoryId(cName string, canMakeNew bool) int {
 	default:
 		return DB_ERROR
 	}
-	return _id // if no rows were found
+	return _id // * if no rows were found sent new made id
 }
 
 func saveUser(user *RegsiterDetail) int {
 	var id int
+
+	// log.Println("user name is ", user.Name)
 	if user.Choice == "student" { // * add to student
 		sqlStatement := `
 		INSERT INTO student (student_name)
 		VALUES ($1) 
-		RETURNING id`
+		RETURNING student_id`
+
+		// log.Println("sql after inserting into student")
 		if err := db.QueryRow(sqlStatement, user.Name).Scan(&id); err != nil {
 			return DB_ERROR
 		}
+		// log.Println("sql after scanning id")
+
 	} else { // * add to mentor
-		if len(user.Category) != 0 {
+		// log.Println("userCategory is ", user.Category)
+		if len(user.Category) == 0 {
 			return WRONG_DATA
 		}
 		categoryId := getCategoryId(user.Category, true)
@@ -98,7 +103,7 @@ func saveUser(user *RegsiterDetail) int {
 		sqlStatement := `
 		INSERT INTO mentor(mentor_name, category_id)
 		VALUES ($1, $2)
-		RETURNING id
+		RETURNING mentor_id
 		`
 		if err := db.QueryRow(sqlStatement, user.Name, categoryId).Scan(&id); err != nil {
 			return DB_ERROR
@@ -113,20 +118,32 @@ func register(w http.ResponseWriter, r *http.Request) {
 	var user RegsiterDetail
 	if err := decoder.Decode(&user); err != nil {
 		// bad request
-		log.Println("JSON not sent")
+		badRequest(w, r)
+		return
 	} else {
-		log.Println(user)
-		if user.Choice != "student" || user.Choice != "mentor" {
+		log.Println(user.Name)
+		log.Println(user.Choice)
+		log.Println(user.Category)
+		if (user.Choice != "student" && user.Choice != "mentor") || len(user.Name) == 0 {
 			// json not constructed correct, no choice taken
+			badRequest(w, r)
+			return
 		} else {
 			_id := saveUser(&user)
+			log.Println("id is: ", _id)
 			if _id == DB_ERROR {
 				// return server error
+				log.Println("DB ERROR")
+				serverError(w, r)
+				return
 			} else if _id == WRONG_DATA {
 				// * means that no category name inputted after selection of mentor
-
+				log.Println("BAD REQUEST")
+				badRequest(w, r)
+				return
 			} else {
 				// * registered
+				log.Println("registered")
 			}
 		}
 	}
@@ -138,10 +155,13 @@ func selectMentor(w http.ResponseWriter, r *http.Request) {
 	var d DuoIdentity
 	if err := decoder.Decode(&d); err != nil {
 		// server error
+		serverError(w, r)
+		return
 	}
 
 	if d.MentorId == 0 || d.StudentId == 0 {
-		// bad request
+		badRequest(w, r)
+		return
 	}
 
 	// insert into relation table
@@ -151,9 +171,12 @@ func selectMentor(w http.ResponseWriter, r *http.Request) {
 
 	if err := db.QueryRow(sqlStatement, d.StudentId, d.MentorId); err != nil {
 		// send database error
+		serverError(w, r)
+		return
 	}
 
 	// send success message
+	fmt.Println("success")
 
 }
 
@@ -161,10 +184,16 @@ func viewMentors(w http.ResponseWriter, r *http.Request, categoryName string) {
 	w.Header().Set("content-type", "application/json")
 	// * fetch the category id
 	_id := getCategoryId(categoryName, false)
+	fmt.Println("value of getCategoryID is ", _id)
 	if _id == WRONG_DATA {
 		// wrong data in query
+		badRequest(w, r)
+		return
+
 	} else if _id == DB_ERROR {
 		// database error
+		serverError(w, r)
+		return
 	} else {
 		// * fetch all the data via categoryId from Mentor table and send it
 		// var mentors []Person
@@ -174,8 +203,9 @@ func viewMentors(w http.ResponseWriter, r *http.Request, categoryName string) {
 
 		rows, err := db.Query(sqlStatement, _id)
 		if err != nil {
-			// logs err
 			// DB error
+			serverError(w, r)
+			return
 		}
 
 		// * called because in case of error in for rows.Next(), Close() is not called automatically
@@ -187,34 +217,50 @@ func viewMentors(w http.ResponseWriter, r *http.Request, categoryName string) {
 			var mentor Person
 			err = rows.Scan(&mentor.ID, &mentor.Name)
 			if err != nil {
-				// server error
+				serverError(w, r)
+				return
 			}
 			mentors = append(mentors, mentor)
 		}
 		err = rows.Err()
 		if err != nil {
-			// server error, incomplete data retrieved
+			serverError(w, r)
+			return
 		}
 
 		// return the list of mentors via json
+		for _, mentor := range mentors {
+			fmt.Println(mentor.ID, mentor.Name)
+		}
+
+		// make json and send
+		dataJson, e := json.Marshal(mentors)
+		if e != nil {
+			// server error
+			serverError(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		w.Write(dataJson)
 	}
 }
 
 func viewStudents(w http.ResponseWriter, r *http.Request, mentorId string) {
 	w.Header().Set("content-type", "application/json")
-
-	sqlStatement := `SELECT s.student_name
-	FROM r relation
-	INNER JOIN s student
+	fmt.Println("before query")
+	sqlStatement := `SELECT s.student_id, s.student_name
+	FROM relation r
+	INNER JOIN student s
 	ON s.student_id = r.student_id
 	WHERE mentor_id=$1`
 
 	rows, err := db.Query(sqlStatement, mentorId)
 	if err != nil {
-		// logs err
 		// DB error
+		serverError(w, r)
+		return
 	}
-
+	fmt.Println("after query")
 	// * called because in case of error in for rows.Next(), Close() is not called automatically
 	defer rows.Close()
 
@@ -224,16 +270,36 @@ func viewStudents(w http.ResponseWriter, r *http.Request, mentorId string) {
 		var student Person
 		err = rows.Scan(&student.ID, &student.Name)
 		if err != nil {
-			// server error
+			serverError(w, r)
+			return
 		}
 		students = append(students, student)
 	}
+
+	fmt.Println("all rows parsed")
+
 	err = rows.Err()
 	if err != nil {
-		// server error, incomplete data retrieved
+		serverError(w, r)
+		return
 	}
 
+	fmt.Println("no error while parsing")
+
 	// return the list of students via json
+	for _, student := range students {
+		fmt.Println(student.ID, student.Name)
+	}
+
+	// make json and send
+	dataJson, e := json.Marshal(students)
+	if e != nil {
+		// server error
+		serverError(w, r)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+	w.Write(dataJson)
 }
 
 func viewHandler(w http.ResponseWriter, r *http.Request) {
@@ -242,20 +308,34 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		categoryName := r.URL.Query().Get("cname")
 		if len(categoryName) == 0 {
 			// bad query values
+			badRequest(w, r)
+			return
 		} else {
 			viewMentors(w, r, categoryName)
 		}
 	} else if userReq == "student" {
-		mentorId := r.URL.Query().Get("id")
+		mentorId := r.URL.Query().Get("mentorid")
 		viewStudents(w, r, mentorId)
 	} else {
 		// bad request/bad query values
+		badRequest(w, r)
+		return
 	}
 }
 
 func notFound(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotFound)
 	w.Write([]byte(`{"error": "not found"}`))
+}
+
+func serverError(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusInternalServerError)
+	w.Write([]byte(`{"error": "Server Error"}`))
+}
+
+func badRequest(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusBadRequest)
+	w.Write([]byte(`{"error": "Wrong Parameter/Query"}`))
 }
 
 // * DB connections
@@ -286,7 +366,7 @@ func main() {
 	//  POST @param: choice(mentor/student), category(string, if mentor) @return: id
 	http.HandleFunc("/register", register)
 
-	//  GET @query: choice category_name(cname) @return: list of mentor_details/list of student_details
+	//  GET @query: choice,cname[choice:mentor],mentorid[choice:student] @return: list of mentor_details/list of student_details
 	http.HandleFunc("/view", viewHandler)
 
 	//  POST @param: mentor_id, student_id @return: success/failure
