@@ -45,7 +45,7 @@ func getMentors(w http.ResponseWriter, r *http.Request, categoryName string) {
 	// * fetch the category id
 	_id := getCategoryId(categoryName, false)
 	if _id == WRONG_DATA {
-		badRequest(w, r)
+		w.WriteHeader(http.StatusNoContent)
 		return
 
 	} else if _id == DB_ERROR {
@@ -88,6 +88,12 @@ func getStudents(w http.ResponseWriter, r *http.Request, mentorId int) {
 		serverError(w, r)
 		return
 	}
+
+	if len(students) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	// make json and send
 	dataJson, e := json.Marshal(students)
 	if e != nil {
