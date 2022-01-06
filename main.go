@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 
-	ctrl "github.com/deus-oc/mentorapi/controllers"
 	dbase "github.com/deus-oc/mentorapi/dbase"
+	r "github.com/deus-oc/mentorapi/routes"
 )
 
 func main() {
@@ -16,13 +16,13 @@ func main() {
 	defer db.Close()
 
 	//  POST @param: name, choice(mentor/student), category_name(string, if mentor) @return: id
-	http.HandleFunc("/register", ctrl.Register)
+	http.HandleFunc("/register", r.Register)
 
 	//  GET @query: requestby,cname[requestby:student],mentorid[requestby:mentor] @return: list of mentor_details/list of student_details
-	http.HandleFunc("/view", ctrl.ViewHandler)
+	http.HandleFunc("/view", r.ViewHandler)
 
 	//  POST @param: mentor_id, student_id @return: success/failure
-	http.HandleFunc("/select", ctrl.SelectMentor)
+	http.HandleFunc("/select", r.SelectMentor)
 
 	if err := http.ListenAndServe(":5001", nil); err != nil {
 		log.Fatal(err)

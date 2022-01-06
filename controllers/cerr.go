@@ -11,3 +11,7 @@ func badRequest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusBadRequest)
 	w.Write([]byte(`{"error": "Wrong Parameter/Query"}`))
 }
+
+func BadMethod(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusMethodNotAllowed)
+}
