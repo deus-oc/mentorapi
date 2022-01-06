@@ -41,7 +41,7 @@ func SelectMentor(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		w.Write([]byte(`{"status": "success"}`))
 
-	// case misisng which is fk_errors on relation i.e. no student_id or no mentor_id present in respective tables
+	// case missing which is fk_errors on relation i.e. no student_id or no mentor_id present in respective tables
 
 	default:
 		serverError(w, r)
