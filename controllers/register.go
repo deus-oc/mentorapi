@@ -64,8 +64,20 @@ func Register(w http.ResponseWriter, r *http.Request) {
 				badRequest(w, r)
 				return
 			} else {
+				res := struct {
+					Status string
+					Id     int
+				}{
+					Status: "success",
+					Id:     _id,
+				}
+				resJson, err := json.Marshal(res)
+				if err != nil {
+					serverError(w, r)
+					return
+				}
 				w.WriteHeader(http.StatusAccepted)
-				w.Write([]byte(`{"status": "success"}`))
+				w.Write(resJson)
 			}
 		}
 	}
