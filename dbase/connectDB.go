@@ -24,7 +24,7 @@ func GetDB() *sql.DB {
 
 func checkTables() error {
 	var err error
-	queries := []string{studentIQuery, categoryIQuery, mentorIQuery, relationIQuery}
+	queries := []string{studentCQuery, categoryCQuery, mentorCQuery, relationCQuery}
 	for _, query := range queries {
 		_, err = db.Exec(query)
 		if err != nil {

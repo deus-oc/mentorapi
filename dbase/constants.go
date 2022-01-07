@@ -1,4 +1,4 @@
-package controllers
+package dbase
 
 const (
 	DB_ERROR = iota - 4

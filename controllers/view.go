@@ -9,55 +9,20 @@ import (
 	dbase "github.com/deus-oc/mentorapi/dbase"
 )
 
-func getList(sqlStatement string, _id int) ([]Person, error) {
-	db := dbase.GetDB()
-	rows, err := db.Query(sqlStatement, _id)
-
-	var persons []Person
-
-	if err != nil {
-		log.Print(err)
-		return persons, err
-	}
-	// * called because in case of error in for rows.Next(), Close() is not called automatically
-	defer rows.Close()
-
-	for rows.Next() {
-		var student Person
-		err = rows.Scan(&student.ID, &student.Name)
-		if err != nil {
-			return persons, err
-		}
-		persons = append(persons, student)
-	}
-
-	err = rows.Err()
-	if err != nil {
-		return persons, err
-	}
-
-	// return the list of students via json
-	return persons, nil
-}
-
 func getMentors(w http.ResponseWriter, r *http.Request, categoryName string) {
 	w.Header().Set("content-type", "application/json")
 	// * fetch the category id
-	_id := getCategoryId(categoryName, false)
-	if _id == WRONG_DATA {
+	categoryId := dbase.GetCategoryId(categoryName, false)
+	if categoryId == WRONG_DATA {
 		w.WriteHeader(http.StatusNoContent)
 		return
 
-	} else if _id == DB_ERROR {
+	} else if categoryId == DB_ERROR {
 		serverError(w, r)
 		return
 	} else {
 		// * fetch all the data via categoryId from Mentor table and send it
-		sqlStatement := `SELECT mentor_id,mentor_name
-		FROM mentor
-		WHERE category_id=$1`
-
-		mentors, err := getList(sqlStatement, _id)
+		mentors, err := dbase.GetList("mentor", categoryId)
 		if err != nil {
 			serverError(w, r)
 			return
@@ -77,13 +42,8 @@ func getMentors(w http.ResponseWriter, r *http.Request, categoryName string) {
 
 func getStudents(w http.ResponseWriter, r *http.Request, mentorId int) {
 	w.Header().Set("content-type", "application/json")
-	sqlStatement := `SELECT s.student_id, s.student_name
-	FROM relation r
-	INNER JOIN student s
-	ON s.student_id = r.student_id
-	WHERE mentor_id=$1`
 
-	students, err := getList(sqlStatement, mentorId)
+	students, err := dbase.GetList("student", mentorId)
 	if err != nil {
 		serverError(w, r)
 		return

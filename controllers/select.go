@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -24,25 +23,15 @@ func SelectMentor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db := dbase.GetDB()
-	sqlStatement := `
-	INSERT INTO relation (student_id, mentor_id)
-	VALUES ($1, $2)
-	ON CONFLICT (student_id)
-	DO NOTHING
-	RETURNING relation_id
-	`
-	var _id int
-	switch err := db.QueryRow(sqlStatement, d.StudentId, d.MentorId).Scan(&_id); err {
-	case sql.ErrNoRows:
+	mentorData := dbase.InsertRelation(d.StudentId, d.MentorId)
+	switch mentorData {
+	case NO_DATA:
 		w.WriteHeader(http.StatusAccepted)
 		w.Write([]byte(`{"status": "already present in db"}`))
-	case nil:
+	case 1:
 		w.WriteHeader(http.StatusAccepted)
 		w.Write([]byte(`{"status": "success"}`))
-
 	default:
 		serverError(w, r)
-		return
 	}
 }
